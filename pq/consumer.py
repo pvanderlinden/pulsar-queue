@@ -168,6 +168,7 @@ class ConsumerMixin:
         else:
             raise ImproperlyConfigured('invalid concurrency')
 
+    @asyncio.coroutine
     def _consume_in_subprocess(self, job, kwargs):
         import pq, os
         # Create the subprocess, redirect the standard output into a pipe
@@ -175,17 +176,20 @@ class ConsumerMixin:
         process_file = os.path.join(pq.__path__[0], "cpubound_process.py")
         create = asyncio.create_subprocess_exec(sys.executable,
                                                 process_file,
-                                                task_json,
-                                                loop=job._loop,stdout=asyncio.subprocess.PIPE)
+                                                # task_json,
+                                                # loop=job._loop,
+                                                stdout=asyncio.subprocess.PIPE,
+                                                stderr=asyncio.subprocess.PIPE)
         process = yield from create
 
         # Wait for the subprocess exit using the process_exited() method
         # of the protocol
-        stdout, stderr = yield from process.communicate()
-        print (stdout, stderr)
+        stdout, stderr = ('test stdout', None) #yield from process.communicate()
+        # yield from process.wait()
+        # print (stdout, stderr)
         if stderr:
             raise RemoteStackTrace(stderr)
         elif stdout:
-            return stdout.decode('utf-8')
+            return stdout #.decode('utf-8')
         # data = yield from process.stdout.readline()
         # return data.decode('utf-8')
