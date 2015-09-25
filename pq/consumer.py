@@ -163,33 +163,31 @@ class ConsumerMixin:
             return job._loop.run_in_executor(None, lambda: job(**kwargs))
 
         elif concurrency == models.CPUBOUND:
-            yield from self._consume_in_subprocess(job, kwargs)
+            return self._consume_in_subprocess(job, kwargs)
 
         else:
             raise ImproperlyConfigured('invalid concurrency')
 
     @asyncio.coroutine
     def _consume_in_subprocess(self, job, kwargs):
+        # taken from this example:
+        # https://github.com
+        # /python/asyncio/blob/master/examples/subprocess_attach_read_pipe.py
         import pq, os
-        # Create the subprocess, redirect the standard output into a pipe
-        task_json = job.task.serialise()
+        # task_json = job.task.serialise()
         process_file = os.path.join(pq.__path__[0], "cpubound_process.py")
-        create = asyncio.create_subprocess_exec(sys.executable,
-                                                process_file,
-                                                # task_json,
-                                                # loop=job._loop,
-                                                stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.PIPE)
-        process = yield from create
+        rfd, wfd = os.pipe()
+        args = [sys.executable,  process_file, str(wfd)]
+        # print ("args: ", args)
+        loop = job._loop
+        pipe = open(rfd, 'rb', 0)
+        reader = asyncio.StreamReader(loop=loop)
+        protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
+        transport, _ = yield from loop.connect_read_pipe(lambda: protocol, pipe)
 
-        # Wait for the subprocess exit using the process_exited() method
-        # of the protocol
-        stdout, stderr = ('test stdout', None) #yield from process.communicate()
-        # yield from process.wait()
-        # print (stdout, stderr)
-        if stderr:
-            raise RemoteStackTrace(stderr)
-        elif stdout:
-            return stdout #.decode('utf-8')
-        # data = yield from process.stdout.readline()
-        # return data.decode('utf-8')
+        proc = yield from asyncio.create_subprocess_exec(*args, pass_fds={wfd})
+        yield from proc.wait()
+
+        os.close(wfd)
+        data = yield from reader.read()
+        # print("read = %r" % data.decode())
