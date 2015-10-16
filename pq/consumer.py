@@ -85,7 +85,7 @@ class ConsumerMixin:
                 if max_tasks and self._processed >= max_tasks:
                     self._closing = ('Processed %s tasks. Restarting.'
                                      % self._processed)
-
+                task = None
                 if not self._closing:
                     try:
                         task = yield from self._pubsub.get_task(*self.queues)
